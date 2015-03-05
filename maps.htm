@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Route Planner</title>
+<style type="text/css">
+#map-canvas {
+   width: 640px;
+   height: 480px;
+}
+</style>
+<script type="text/javascript" src="//maps.googleapis.com/maps/api/js?libraries=geometry,drawing&amp;key=AIzaSyDWaCjt39pWuVfV78JixAWj99htbn2sutc"></script>
+<script type="text/javascript">
+var map;
+var points = [];
+var markers = [];
+var polyline = new google.maps.Polyline({
+   path: [],
+   strokeColor: 'red',
+   strokeOpacity: .5,
+   strokeWeight: 5,
+   editable: true
+});
+var progress_points;
+var progress_line = new google.maps.Polyline({
+   path: [],
+   strokeColor: 'yellow',
+   strokeOpacity: .75,
+   strokeWeight: 4
+});
+var distance;
+function distance_format(d) {
+   if (document.getElementById('js-unit').value === 'km') {
+      if (d < 1000) {
+         return Math.round(d) + ' m';
+      } else {
+         return Math.round(d / 1000) + ' km';
+      }
+   } else {
+      d = d * 1.0936133;
+      if (d < 1760) {
+         return Math.round(d) + ' yards';
+      } else {
+         return Math.round(d / 1760) + ' miles';
+      }
+   }
+}
+function clearMarkers() {
+   markers[0].setMap(null);
+   markers[1].setMap(null);
+   markers = [];
+}
+function updateMarkers() {
+   points = polyline.getPath().getArray();
+   if (markers.length > 0) {
+      markers[0].setPosition(points[0]);
+      if (markers.length > 1) {
+         markers[1].setPosition(points[points.length - 1]);
+      }
+   }
+}
+function redrawProgress() {
+   if (progress_line !== null) progress_line.setMap(null);
+   var progress = document.getElementById('js-progress').value * 1000;
+   if (document.getElementById('js-unit').value !== 'km') progress *= 1.609344;
+   if (progress == 0) return;
+   progress_points = [points[0]];
+   for (var i=1; i<points.length; ++i) {
+      progress -= google.maps.geometry.spherical.computeDistanceBetween (points[i], points[i - 1]);
+      if (progress >= 0) {
+         progress_points.push(points[i]);
+         if (progress < 1) break;
+      } else {
+         var lat_diff = points[i].lat() - points[i - 1].lat();
+         var lng_diff = points[i].lng() - points[i - 1].lng();
+         var section = google.maps.geometry.spherical.computeDistanceBetween (points[i], points[i - 1]);
+         progress_points.push(new google.maps.LatLng(points[i].lat() + lat_diff * progress / section,
+            points[i].lng() + lng_diff * progress / section));
+         break;
+      }
+   }
+   progress_line.setPath(progress_points);
+   progress_line.setMap(map);
+}
+function redrawLine() {
+   if (polyline !== null) polyline.setMap(null);
+   distance = 0;
+   if (points.length > 1) {
+      polyline.setPath(points);
+      polyline.setMap(map);
+      for (var i=1; i<points.length; ++i) {
+         distance += google.maps.geometry.spherical.computeDistanceBetween (points[i], points[i - 1]);
+      }
+   }
+   var path = polyline.getPath();
+   google.maps.event.addDomListener(path, 'insert_at', function() {
+      updateMarkers();
+      redrawLine();
+   });
+   google.maps.event.addDomListener(path, 'set_at', function() {
+      updateMarkers();
+      redrawLine();
+   });
+   document.getElementById('js-distance').innerHTML = distance_format(distance);
+   redrawProgress();
+}
+function initialize() {
+   var mapOptions = {
+      center: { lat: 53, lng: 0 },
+      zoom: 8
+   };
+   map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+   var drawOptions = {
+      drawingMode: google.maps.drawing.OverlayType.MARKER,
+      drawingControl: true,
+      drawingControlOptions: {
+         position: google.maps.ControlPosition.TOP_CENTER,
+         drawingModes: [google.maps.drawing.OverlayType.MARKER]
+      }
+   };
+   var drawingManager = new google.maps.drawing.DrawingManager(drawOptions);
+   drawingManager.setMap(map);
+   google.maps.event.addListener(drawingManager, 'markercomplete', function(marker) {
+      if (markers.length === 2) {
+         var old_marker = markers.pop();
+         old_marker.setMap(null);
+      }
+      marker.setTitle((markers.length === 0) ? 'Start' : 'Finish');
+      points.push(marker.getPosition());
+      markers.push(marker);
+      redrawLine();
+   });
+   google.maps.event.addDomListener(document.getElementById('js-zoom'), 'click', function() {
+      var bounds = new google.maps.LatLngBounds();
+      for (var i=0; i<points.length; ++i) {
+         bounds.extend(points[i]);
+      }
+      map.fitBounds(bounds);
+   });
+   google.maps.event.addDomListener(document.getElementById('js-delete'), 'click', function() {
+      if (points.length <= 2) {
+         var marker = markers.pop();
+         marker.setMap(null);
+      }
+      points.pop();
+      markers[markers.length - 1].setPosition(points[points.length - 1]);
+      redrawLine();
+   });
+   google.maps.event.addDomListener(document.getElementById('js-clear'), 'click', function() {
+      clearMarkers();
+      points = [];
+      redrawLine();
+   });
+   google.maps.event.addDomListener(document.getElementById('js-load'), 'click', function() {
+      points = google.maps.geometry.encoding.decodePath(document.getElementById('js-code').value);
+      clearMarkers();
+      for (var i=0; i<points.length; ++i) {
+         marker = new google.maps.Marker({
+            map: map,
+            title: '' + i,
+            position: points[i],
+            draggable: true
+         });
+         markers.push(marker);
+      }
+      redrawLine();
+   });
+   google.maps.event.addDomListener(document.getElementById('js-save'), 'click', function() {
+      document.getElementById('js-code').value = google.maps.geometry.encoding.encodePath(points);
+   });
+   google.maps.event.addDomListener(document.getElementById('js-view'), 'click', function() {
+      redrawProgress();
+   });
+   google.maps.event.addDomListener(document.getElementById('js-edit'), 'click', function() {
+      if (polyline.getEditable()) {
+         polyline.setEditable(false);
+         var marker;
+         for (var i in markers) {
+            marker = markers[i];
+            marker.setVisible(false);
+         }
+         document.getElementById('js-edit').innerHTML = 'View Mode';
+      } else {
+         polyline.setEditable(true);
+         var marker;
+         for (var i in markers) {
+            marker = markers[i];
+            marker.setVisible(true);
+         }
+         document.getElementById('js-edit').innerHTML = 'Edit Mode';
+      }
+   });
+   google.maps.event.addDomListener(polyline, 'dblclick', function(mev){
+      if (mev.vertex !== undefined) {
+         polyline.getPath().removeAt(mev.vertex);
+         points = polyline.getPath().getArray();
+         if (mev.vertex === 0) {
+            if (points.length > 0) {
+               markers[0].setPosition(points[0]);
+               if (points.length === 1) {
+                  markers[1].setMap(null);
+               }
+            } else {
+               markers[0].setMap(null);
+            }
+         } else if (mev.vertex === points.length) {
+            if (points.length > 0) {
+               if (points.length === 1) {
+                  markers[1].setMap(null);
+               } else {
+                  markers[1].setPosition(points[points.length - 1]);
+               }
+            } else {
+               markers[1].setMap(null);
+            }
+         }
+         redrawLine();
+      }
+   });
+   google.maps.event.addDomListener(document.getElementById('js-unit'), 'change', function() {
+      redrawLine();
+   });
+}
+google.maps.event.addDomListener(window, 'load', initialize);
+</script>
+</head>
+<body>
+<div id="map-canvas"></div>
+<p>Distance: <span id="js-distance">0 m</span></p>
+<button id="js-zoom">Zoom</button>
+<button id="js-delete">Delete</button>
+<button id="js-clear">Clear</button>
+<button id="js-load">Load</button>
+<input type="text" id="js-code" />
+<button id="js-save">Save</button>
+<input type="text" id="js-progress" />
+<button id="js-view">View</button>
+<button id="js-edit">Edit Mode</button>
+<select id="js-unit">
+   <option value="miles">Miles</option>
+   <option value="km">Kilometres</option>
+</select>
+<input type="text" name="name" />
+</body>
+</html>
