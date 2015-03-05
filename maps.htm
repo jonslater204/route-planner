@@ -8,9 +8,12 @@
    height: 480px;
 }
 </style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
 <script type="text/javascript" src="//maps.googleapis.com/maps/api/js?libraries=geometry,drawing&amp;key=AIzaSyDWaCjt39pWuVfV78JixAWj99htbn2sutc"></script>
 <script type="text/javascript">
 var map;
+var route;
+var load_route;
 var points = [];
 var markers = [];
 var polyline = new google.maps.Polyline({
@@ -150,22 +153,48 @@ function initialize() {
       points = [];
       redrawLine();
    });
-   google.maps.event.addDomListener(document.getElementById('js-load'), 'click', function() {
-      points = google.maps.geometry.encoding.decodePath(document.getElementById('js-code').value);
-      clearMarkers();
-      for (var i=0; i<points.length; ++i) {
-         marker = new google.maps.Marker({
-            map: map,
-            title: '' + i,
-            position: points[i],
-            draggable: true
-         });
-         markers.push(marker);
-      }
-      redrawLine();
+   $('.js-load').click(function() {
+      load_route = this.attr('id').replace(/[^0-9]/g, '');
+      $('#js-message').text('Loading...');
+      $.ajax('maps.php', {
+         data: {route: route},
+         dataType: 'json'
+      })
+      .done(function(data) {
+         points = google.maps.geometry.encoding.decodePath(data);
+         clearMarkers();
+         for (var i=0; i<points.length; ++i) {
+            marker = new google.maps.Marker({
+               map: map,
+               title: (i === 0) ? 'Start' : 'Finish',
+               position: points[i],
+               draggable: true
+            });
+            markers.push(marker);
+         }
+         redrawLine();
+         $('#js-message').text('');
+         route = load_route;
+      })
+      .fail(function() {
+         $('#js-message').text('Load failed');
+      });
    });
-   google.maps.event.addDomListener(document.getElementById('js-save'), 'click', function() {
-      document.getElementById('js-code').value = google.maps.geometry.encoding.encodePath(points);
+   $('#js-save').click(function() {
+      $('#js-message').text('Saving...');
+      $.ajax('maps.php', {
+         data: {route: google.maps.geometry.encoding.encodePath(points)},
+         name: $('#js-name').val(),
+         progress: $('#js-progress').val(),
+         unit: $('#js-unit').val(),
+         dataType: 'json'
+      })
+      .done(function() {
+         $('#js-message').text('');
+      })
+      .fail(function() {
+         $('#js-message').text('Save failed');
+      });
    });
    google.maps.event.addDomListener(document.getElementById('js-view'), 'click', function() {
       redrawProgress();
@@ -229,16 +258,18 @@ google.maps.event.addDomListener(window, 'load', initialize);
 <button id="js-zoom">Zoom</button>
 <button id="js-delete">Delete</button>
 <button id="js-clear">Clear</button>
-<button id="js-load">Load</button>
-<input type="text" id="js-code" />
+<span id="js-message"></span>
 <button id="js-save">Save</button>
-<input type="text" id="js-progress" />
+<input type="text" id="js-progress" name="progress" />
 <button id="js-view">View</button>
 <button id="js-edit">Edit Mode</button>
-<select id="js-unit">
+<select id="js-unit" name="unit">
    <option value="miles">Miles</option>
    <option value="km">Kilometres</option>
 </select>
-<input type="text" name="name" />
+<input type="text" id="js-name" name="name" />
+<p><a id="js-route1" class="js-load">Load 1</a></p>
+<p><a id="js-route2" class="js-load">Load 2</a></p>
+<p><a id="js-route3" class="js-load">Load 3</a></p>
 </body>
 </html>
