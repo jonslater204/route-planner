@@ -8,11 +8,12 @@
    height: 480px;
 }
 </style>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
 <script type="text/javascript" src="//maps.googleapis.com/maps/api/js?libraries=geometry,drawing&amp;key=AIzaSyDWaCjt39pWuVfV78JixAWj99htbn2sutc"></script>
 <script type="text/javascript">
 var map;
-var route;
+var drawingManager;
+var route_id;
 var load_route;
 var points = [];
 var markers = [];
@@ -47,9 +48,78 @@ function distance_format(d) {
       }
    }
 }
+function loadRoutes() {
+   $.ajax('maps.php', {
+      data: {op: 3},
+      type: 'post',
+      dataType: 'json'
+   })
+   .done(function(data) {
+      if (data.response === 'loaded') {
+         var routes = [];
+         for (var i in data.routes) {
+            routes.push('<p><a id="js-route' + data.routes[i].routeid
+               + '" class="js-load" href="#">' + data.routes[i].name + '</a></p>');
+         }
+         $('#js-routes').html(routes.join("\r\n"));
+      }
+   })
+   .fail(function() {
+      $('#js-routes').html('<p>Failed to load routes</p>');
+   });
+}
+function loadRoute(r) {
+   load_route = r;
+   $('#js-message').text('Loading...');
+   $.ajax('maps.php', {
+      data: {op: 2, routeid: r},
+      type: 'post',
+      dataType: 'json'
+   })
+   .done(function(data) {
+      if (data.response === 'loaded') {
+         points = google.maps.geometry.encoding.decodePath(data.route.route);
+         clearMarkers();
+         for (var i=0; i<points.length; ++i) {
+            if (i === 0 || i === points.length - 1) {
+               marker = new google.maps.Marker({
+                  map: map,
+                  title: (i === 0) ? 'Start' : 'Finish',
+                  position: points[i],
+                  draggable: true
+               });
+               markers.push(marker);
+            }
+         }
+         $('#js-message').text('');
+         $('#js-name').val(data.route.name);
+         $('#js-unit').val((data.route.unit*1 === 1) ? 'km' : 'miles');
+         $('#js-progress').val(data.route.progress);
+         redrawLine();
+         zoomFit();
+         route_id = data.route.routeid;
+         drawingManager.setOptions({
+            drawingMode: null
+         });
+      } else {
+         $('#js-message').text((load_route === 0) ? '' : 'Load failed');
+      }
+   })
+   .fail(function() {
+      $('#js-message').text((load_route === 0) ? '' : 'Load failed');
+   });
+}
+function zoomFit() {
+   var bounds = new google.maps.LatLngBounds();
+   for (var i=0; i<points.length; ++i) {
+      bounds.extend(points[i]);
+   }
+   map.fitBounds(bounds);
+}
 function clearMarkers() {
-   markers[0].setMap(null);
-   markers[1].setMap(null);
+   for (var i in markers) {
+      markers[i].setMap(null);
+   }
    markers = [];
 }
 function updateMarkers() {
@@ -120,7 +190,7 @@ function initialize() {
          drawingModes: [google.maps.drawing.OverlayType.MARKER]
       }
    };
-   var drawingManager = new google.maps.drawing.DrawingManager(drawOptions);
+   drawingManager = new google.maps.drawing.DrawingManager(drawOptions);
    drawingManager.setMap(map);
    google.maps.event.addListener(drawingManager, 'markercomplete', function(marker) {
       if (markers.length === 2) {
@@ -133,11 +203,7 @@ function initialize() {
       redrawLine();
    });
    google.maps.event.addDomListener(document.getElementById('js-zoom'), 'click', function() {
-      var bounds = new google.maps.LatLngBounds();
-      for (var i=0; i<points.length; ++i) {
-         bounds.extend(points[i]);
-      }
-      map.fitBounds(bounds);
+      zoomFit();
    });
    google.maps.event.addDomListener(document.getElementById('js-delete'), 'click', function() {
       if (points.length <= 2) {
@@ -153,44 +219,27 @@ function initialize() {
       points = [];
       redrawLine();
    });
-   $('.js-load').click(function() {
-      load_route = this.attr('id').replace(/[^0-9]/g, '');
-      $('#js-message').text('Loading...');
+   $('.js-load').click(function(e) {
+      e.preventDefault();
+      loadRoute($(this).attr('id').replace(/[^0-9]/g, ''));
+   });
+   $('#js-save').click(function(e) {
+      e.preventDefault();
+      $('#js-message').text('Saving...');
       $.ajax('maps.php', {
-         data: {route: route},
+         data: {
+            op: 1,
+            routeid: route_id,
+            route: google.maps.geometry.encoding.encodePath(points),
+            name: $('#js-name').val(),
+            progress: $('#js-progress').val(),
+            unit: $('#js-unit').val()
+         },
+         type: 'post',
          dataType: 'json'
       })
       .done(function(data) {
-         points = google.maps.geometry.encoding.decodePath(data);
-         clearMarkers();
-         for (var i=0; i<points.length; ++i) {
-            marker = new google.maps.Marker({
-               map: map,
-               title: (i === 0) ? 'Start' : 'Finish',
-               position: points[i],
-               draggable: true
-            });
-            markers.push(marker);
-         }
-         redrawLine();
-         $('#js-message').text('');
-         route = load_route;
-      })
-      .fail(function() {
-         $('#js-message').text('Load failed');
-      });
-   });
-   $('#js-save').click(function() {
-      $('#js-message').text('Saving...');
-      $.ajax('maps.php', {
-         data: {route: google.maps.geometry.encoding.encodePath(points)},
-         name: $('#js-name').val(),
-         progress: $('#js-progress').val(),
-         unit: $('#js-unit').val(),
-         dataType: 'json'
-      })
-      .done(function() {
-         $('#js-message').text('');
+         $('#js-message').text((data.response === 'saved') ? '' : 'Save failed');
       })
       .fail(function() {
          $('#js-message').text('Save failed');
@@ -248,6 +297,11 @@ function initialize() {
    google.maps.event.addDomListener(document.getElementById('js-unit'), 'change', function() {
       redrawLine();
    });
+   $('#js-new').click(function() {
+      route_id = 0;
+   });
+   loadRoutes();
+   loadRoute(0);
 }
 google.maps.event.addDomListener(window, 'load', initialize);
 </script>
@@ -268,8 +322,10 @@ google.maps.event.addDomListener(window, 'load', initialize);
    <option value="km">Kilometres</option>
 </select>
 <input type="text" id="js-name" name="name" />
-<p><a id="js-route1" class="js-load">Load 1</a></p>
-<p><a id="js-route2" class="js-load">Load 2</a></p>
-<p><a id="js-route3" class="js-load">Load 3</a></p>
+<div id="js-routes"></div>
+<p><a id="js-route1" class="js-load" href="#">Load 1</a></p>
+<p><a id="js-route2" class="js-load" href="#">Load 2</a></p>
+<p><a id="js-route3" class="js-load" href="#">Load 3</a></p>
+<button id="js-new">New Route</button>
 </body>
 </html>
