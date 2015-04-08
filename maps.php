@@ -10,7 +10,7 @@ switch ($op) {
    case 1:
       // Save
       $progress = (isset($_POST['progress'])) ? (int) $_POST['progress'] : 0;
-      $unit = (isset($_POST['unit'])) ? (int) $_POST['unit'] : 0;
+      $unit = (isset($_POST['unit'])) ? (($_POST['unit'] === 'km') ? 1 : 0) : 0;
       $name = $db->escape($_POST['name']);
       if ($route_id === 0) {
          $success = $db->insert('route', array(
@@ -24,7 +24,7 @@ switch ($op) {
             'route'=>$db->escape($route),
             'progress'=>$progress,
             'unit'=>$unit,
-            'name'=>$name), "routeid = '$route_id' AND $memberid = 204");
+            'name'=>$name), "routeid = '$route_id' AND memberid = 204");
       }
       echo json_encode(array('response'=>($success === FALSE) ? 'error' : 'saved'));
       break;
@@ -42,7 +42,17 @@ switch ($op) {
       }
       break;
    case 3:
-      $routes = $db->select('route', "memberid IN (204, 0)", 'memberid, name');
+      $sql = <<<EOB
+SELECT *, IF(memberid != 0, 1, 0) 'del'
+FROM route
+WHERE memberid IN (204, 0)
+ORDER BY memberid, name
+EOB;
+      $routes = $db->doSQL($sql);
       echo json_encode(array('response'=>'loaded', 'routes'=>$routes));
+      break;
+   case 4:
+      $success = $db->delete('route', "routeid = '$route_id' AND memberid = 204");
+      echo json_encode(array('response'=>'deleted'));
       break;
 }
