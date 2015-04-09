@@ -31,7 +31,7 @@ var $wlrMap = {
       $latest_route = null;
       for (var $r=0, $len=localStorage.length; $r<$len; $r++) {
          var $key = localStorage.key($r);
-         if ($key.replace(/[0-9]/, '') === 'route') {
+         if ($key.replace(/[0-9]/, '') === 'route' && $key !== 'route0') {
             var $route = localStorage[$key];
             if ($route !== 'null' && $route !== null) {
                $route = JSON.parse($route);
@@ -43,9 +43,12 @@ var $wlrMap = {
                   if ($latest_route === null || $route.edited > $latest_route.edited ) {
                      $latest_route = $route;
                   }
+                  $html += '</p>';
+                  $routes.unshift($html);
+               } else {
+                  $html += '</p>';
+                  $routes.push($html);
                }
-               $html += '</p>';
-               $routes.push($html);
                if ($route.routeid > $wlrMap.auto_inc) {
                   $wlrMap.auto_inc = $route.routeid;
                }
@@ -215,11 +218,9 @@ var $wlrMap = {
       $wlrMap.redrawProgress();
    },
    init: function() {
-      $wlrMap.loadRoutes();
       var $map_width = 800;
       $('#map-canvas').css('width', Math.floor($map_width) + 'px');
       $('#map-canvas').css('height', Math.floor((3 * $map_width / 4)) + 'px');
-      $wlrMap.loadRoute(0);
       localStorage.setItem('route1', JSON.stringify({
          routeid: 1,
          route: '{hdyHmTkQyv@iF_NKeW_Mya@u@or@_D}SuEuA_C}L?al@kQ_UaKa]sCki@_DyJm_@dI^|SjBlEh@~ThCzKsBza@tNpd@~Hl[~D`e@jIbyAi@fg@j^xcB_E~E~BlE~B~oAuCtW_Q~c@kK~Mah@xeAaDsHyEeEu@`GyDtA{JGeH_FdF{RnL_CiAgJePsVwXfByGfC_EbOrBxYjE~Mz^pv@nBz@eBhGzEvaAyC~PgUln@k\yR{KqCjC}L_Ee[_BczBqDo`@zAs@dBe[~Eu_@_C{Ou@aNdS|AnCtAnAcHpFwBtRtAjb@}AjCiCdJ?~KuIjNu^tCcLn@{OeKlBkNzCwr@yF_Cn_@kEf]kHnIcEGbEon@iGcA_Cl_@_CYxC}m@nAi@?uHoGmLuEgCHcDiA}EeAjDyAqCeIdIoIpCxAp~@eEvi@_CdNZpGq@lLi@fo@tInF~Dn\Jhw@~AjfAuGbH~Gfo@i@fQhCzKuFlj@uEdm@Jn\^|gA~E|b@dKfQnLrHv]xFkA|b@jDvy@eElEyBk@uDeM',
@@ -390,6 +391,8 @@ var $wlrMap = {
          $wlrMap.route_id = 0;
          $('#js-name').val('');
       });
+      $wlrMap.loadRoutes();
+      $wlrMap.loadRoute(0);
    }
 }
 $wlrMap.init();
